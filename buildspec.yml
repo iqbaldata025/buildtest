@@ -2,10 +2,12 @@ version: 0.2
 
 env:
   variables:
-    ENVNAME: "dev"
+    # --- Override these in the CodeBuild console at run time if needed ---
+    ENVNAME: "dev"                                # dev | prod
     DATA_INTEGRATION_GIT_BRANCH: "main"
-    S3_BUCKET: "k12rs-devops-data025"                # change to your unique bucket
+    S3_BUCKET: "k12rs-devops-data025"                     # change to your unique bucket
     S3_PREFIX: "build-packages/database-packages"
+    # Windows paths for your installer
     DBInstallerSourceLocation: "C:\\DataBaseInstaller\\Source_Packages"
     DBInstallerFinalLocation:  "C:\\DataBaseInstaller\\Final_Packages"
     SCRIPT_SUBDIR: "K12RSIntegrationServices\\DataIntegration"
@@ -13,6 +15,7 @@ env:
 phases:
   install:
     commands:
+      - 'ver'
       - 'echo Windows host: %OS%'
       - 'aws --version'
       - 'if not exist "C:\DataBaseInstaller" mkdir "C:\DataBaseInstaller"'
@@ -24,17 +27,25 @@ phases:
       - 'set scriptpath=%CD%'
       - 'echo scriptpath=%scriptpath%'
       - 'echo CODEBUILD_SRC_DIR=%CODEBUILD_SRC_DIR%'
-      - 'if exist "%CODEBUILD_SRC_DIR%\DataBaseInstaller\Build" ( xcopy /s /i /y "%CODEBUILD_SRC_DIR%\DataBaseInstaller\Build" "C:\DataBaseInstaller\Build\." ) else ( echo NOTE: Ensure C:\DataBaseInstaller\Build\run_database_installer.bat exists )'
+      # If the repo contains DataBaseInstaller\Build, copy it to C:\ for the run step
+      - 'if exist "%CODEBUILD_SRC_DIR%\DataBaseInstaller\Build" ( xcopy /e /i /y "%CODEBUILD_SRC_DIR%\DataBaseInstaller\Build" "C:\DataBaseInstaller\Build\." ) else ( echo NOTE: Ensure C:\DataBaseInstaller\Build\run_database_installer.bat exists )'
 
   build:
     commands:
+      # Clean prior Source_Packages\<ENVNAME>
       - 'if exist "%DBInstallerSourceLocation%\%ENVNAME%" rmdir /s /q "%DBInstallerSourceLocation%\%ENVNAME%"'
-      - 'xcopy /s /i /y "%scriptpath%\%SCRIPT_SUBDIR%" "%DBInstallerSourceLocation%\%ENVNAME%\DataIntegration\"'
+      # Copy DataIntegration source into Source_Packages\<ENVNAME>\DataIntegration\
+      - 'xcopy /e /i /y "%scriptpath%\%SCRIPT_SUBDIR%" "%DBInstallerSourceLocation%\%ENVNAME%\DataIntegration\"'
+      # Run the installer (creates Final_Packages\<ENVNAME>\...)
       - 'call "C:\DataBaseInstaller\Build\run_database_installer.bat" %ENVNAME%'
+      # Prepare local package folder
       - 'cd /d "%CODEBUILD_SRC_DIR%"'
       - 'if not exist "db-prepration-package" mkdir "db-prepration-package"'
-      - 'xcopy /s /i /y "%DBInstallerFinalLocation%\%ENVNAME%" "%scriptpath%\db-prepration-package\%ENVNAME%\"'
-      - 'xcopy /s /i /y "%scriptpath%\%SCRIPT_SUBDIR%" "%scriptpath%\db-prepration-package\DataIntegration\"'
+      # Copy Final_Packages\<ENVNAME> into db-prepration-package\<ENVNAME>\
+      - 'xcopy /e /i /y "%DBInstallerFinalLocation%\%ENVNAME%" "%scriptpath%\db-prepration-package\%ENVNAME%\"'
+      # Also copy DataIntegration into db-prepration-package\DataIntegration\
+      - 'xcopy /e /i /y "%scriptpath%\%SCRIPT_SUBDIR%" "%scriptpath%\db-prepration-package\DataIntegration\"'
+      # Push to S3 (clean then upload)
       - 'aws s3 rm --recursive "s3://%S3_BUCKET%/%S3_PREFIX%/%DATA_INTEGRATION_GIT_BRANCH%/%ENVNAME%/"'
       - 'aws s3 cp --recursive "%scriptpath%\db-prepration-package\" "s3://%S3_BUCKET%/%S3_PREFIX%/%DATA_INTEGRATION_GIT_BRANCH%/%ENVNAME%/"'
 
@@ -42,3 +53,4 @@ phases:
     commands:
       - 'rmdir /s /q "db-prepration-package" || ver > nul'
 
+# No CodeBuild artifacts section needed; we upload directly to S3 in the build phase.
