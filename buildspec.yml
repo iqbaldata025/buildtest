@@ -2,12 +2,10 @@ version: 0.2
 
 env:
   variables:
-    # --- Override these per run or set at project level ---
-    ENVNAME: "dev"                           # dev | prod
+    ENVNAME: "dev"
     DATA_INTEGRATION_GIT_BRANCH: "main"
-    S3_BUCKET: "k12rs-devops"
+    S3_BUCKET: "k12rs-devops"                # change to your unique bucket
     S3_PREFIX: "build-packages/database-packages"
-    # Paths (keep as Windows paths)
     DBInstallerSourceLocation: "C:\\DataBaseInstaller\\Source_Packages"
     DBInstallerFinalLocation:  "C:\\DataBaseInstaller\\Final_Packages"
     SCRIPT_SUBDIR: "K12RSIntegrationServices\\DataIntegration"
@@ -15,43 +13,31 @@ env:
 phases:
   install:
     commands:
-      - echo Windows host: %OS%
-      - aws --version
-      - if not exist "C:\DataBaseInstaller" mkdir "C:\DataBaseInstaller"
-      - if not exist "%DBInstallerSourceLocation%" mkdir "%DBInstallerSourceLocation%"
-      - if not exist "%DBInstallerFinalLocation%" mkdir "%DBInstallerFinalLocation%"
+      - 'echo Windows host: %OS%'
+      - 'aws --version'
+      - 'if not exist "C:\DataBaseInstaller" mkdir "C:\DataBaseInstaller"'
+      - 'if not exist "%DBInstallerSourceLocation%" mkdir "%DBInstallerSourceLocation%"'
+      - 'if not exist "%DBInstallerFinalLocation%" mkdir "%DBInstallerFinalLocation%"'
 
   pre_build:
     commands:
-      - set scriptpath=%CD%
-      - echo scriptpath=%scriptpath%
-      - echo CODEBUILD_SRC_DIR=%CODEBUILD_SRC_DIR%
-      # If your repo contains DataBaseInstaller\Build, copy it into C:\ (optional)
-      - if exist "%CODEBUILD_SRC_DIR%\DataBaseInstaller\Build" (
-          xcopy /s /i /y "%CODEBUILD_SRC_DIR%\DataBaseInstaller\Build" "C:\DataBaseInstaller\Build\"
-        ) else (
-          echo "NOTE: Ensure C:\DataBaseInstaller\Build\run_database_installer.bat exists (baked in image or copied from repo)."
-        )
+      - 'set scriptpath=%CD%'
+      - 'echo scriptpath=%scriptpath%'
+      - 'echo CODEBUILD_SRC_DIR=%CODEBUILD_SRC_DIR%'
+      - 'if exist "%CODEBUILD_SRC_DIR%\DataBaseInstaller\Build" ( xcopy /s /i /y "%CODEBUILD_SRC_DIR%\DataBaseInstaller\Build" "C:\DataBaseInstaller\Build\." ) else ( echo NOTE: Ensure C:\DataBaseInstaller\Build\run_database_installer.bat exists )'
 
   build:
     commands:
-      # Clean prior Source_Packages\<ENVNAME>
-      - if exist "%DBInstallerSourceLocation%\%ENVNAME%" rmdir /s /q "%DBInstallerSourceLocation%\%ENVNAME%"
-      # Copy DataIntegration source into Source_Packages\<ENVNAME>\DataIntegration\
-      - xcopy /s /i /y "%scriptpath%\%SCRIPT_SUBDIR%" "%DBInstallerSourceLocation%\%ENVNAME%\DataIntegration\"
-      # Run the installer
-      - call "C:\DataBaseInstaller\Build\run_database_installer.bat" %ENVNAME%
-      # Prepare local package folder
-      - cd /d "%CODEBUILD_SRC_DIR%"
-      - if not exist "db-prepration-package" mkdir "db-prepration-package"
-      # Copy Final_Packages\<ENVNAME> into db-prepration-package\<ENVNAME>\
-      - xcopy /s /i /y "%DBInstallerFinalLocation%\%ENVNAME%" "%scriptpath%\db-prepration-package\%ENVNAME%\"
-      # Also copy DataIntegration into db-prepration-package\DataIntegration\
-      - xcopy /s /i /y "%scriptpath%\%SCRIPT_SUBDIR%" "%scriptpath%\db-prepration-package\DataIntegration\"
-      # Push to S3 (clean then upload)
-      - aws s3 rm --recursive "s3://%S3_BUCKET%/%S3_PREFIX%/%DATA_INTEGRATION_GIT_BRANCH%/%ENVNAME%/"
-      - aws s3 cp --recursive "%scriptpath%\db-prepration-package\" "s3://%S3_BUCKET%/%S3_PREFIX%/%DATA_INTEGRATION_GIT_BRANCH%/%ENVNAME%/"
+      - 'if exist "%DBInstallerSourceLocation%\%ENVNAME%" rmdir /s /q "%DBInstallerSourceLocation%\%ENVNAME%"'
+      - 'xcopy /s /i /y "%scriptpath%\%SCRIPT_SUBDIR%" "%DBInstallerSourceLocation%\%ENVNAME%\DataIntegration\"'
+      - 'call "C:\DataBaseInstaller\Build\run_database_installer.bat" %ENVNAME%'
+      - 'cd /d "%CODEBUILD_SRC_DIR%"'
+      - 'if not exist "db-prepration-package" mkdir "db-prepration-package"'
+      - 'xcopy /s /i /y "%DBInstallerFinalLocation%\%ENVNAME%" "%scriptpath%\db-prepration-package\%ENVNAME%\"'
+      - 'xcopy /s /i /y "%scriptpath%\%SCRIPT_SUBDIR%" "%scriptpath%\db-prepration-package\DataIntegration\"'
+      - 'aws s3 rm --recursive "s3://%S3_BUCKET%/%S3_PREFIX%/%DATA_INTEGRATION_GIT_BRANCH%/%ENVNAME%/"'
+      - 'aws s3 cp --recursive "%scriptpath%\db-prepration-package\" "s3://%S3_BUCKET%/%S3_PREFIX%/%DATA_INTEGRATION_GIT_BRANCH%/%ENVNAME%/"'
 
   post_build:
     commands:
-      - rmdir /s /q "db-prepration-package" || ver > nul
+      - 'rmdir /s /q "db-prepration-package" || ver > nul'
