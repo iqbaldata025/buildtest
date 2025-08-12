@@ -6,7 +6,7 @@ env:
     # --- Override these per run or set at project level ---
     ENVNAME: "dev"                           # dev | prod
     DATA_INTEGRATION_GIT_BRANCH: "main"
-    S3_BUCKET: "k12rs-devops"
+    S3_BUCKET: "k12rs-devops-data025"
     S3_PREFIX: "build-packages/database-packages"
     # Paths (keep as Windows paths)
     DBInstallerSourceLocation: "C:\\DataBaseInstaller\\Source_Packages"
@@ -56,3 +56,4 @@ phases:
   post_build:
     commands:
       - rmdir /s /q "db-prepration-package" || ver > nul
+
